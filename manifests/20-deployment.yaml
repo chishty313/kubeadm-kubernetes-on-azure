@@ -1,0 +1,36 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: web
+  namespace: demo
+  labels: { app: web }
+spec:
+  replicas: 3
+  selector:
+    matchLabels: { app: web }
+  template:
+    metadata:
+      labels: { app: web }
+    spec:
+      containers:
+        - name: web
+          image: nginxdemos/hello:plain-text     # prints the pod's hostname & IP
+          ports:
+            - containerPort: 80
+          envFrom:
+            - configMapRef: { name: app-config }  # inject all ConfigMap keys as env vars
+          env:
+            - name: API_TOKEN
+              valueFrom:
+                secretKeyRef: { name: app-secret, key: API_TOKEN }
+          readinessProbe:                          # don't send traffic until ready
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 3
+            periodSeconds: 5
+          livenessProbe:                           # restart if it hangs
+            httpGet: { path: /, port: 80 }
+            initialDelaySeconds: 10
+            periodSeconds: 10
+          resources:
+            requests: { cpu: "50m",  memory: "32Mi" }
+            limits:   { cpu: "200m", memory: "128Mi" }

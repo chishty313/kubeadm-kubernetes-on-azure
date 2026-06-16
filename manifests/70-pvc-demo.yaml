@@ -1,0 +1,26 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: data
+  namespace: demo
+spec:
+  accessModes: [ "ReadWriteOnce" ]
+  storageClassName: local-path
+  resources:
+    requests: { storage: 1Gi }
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: writer
+  namespace: demo
+spec:
+  containers:
+    - name: writer
+      image: busybox:1.36
+      command: ["sh","-c","echo 'data survives pod restarts' > /data/note.txt && sleep 3600"]
+      volumeMounts:
+        - { name: vol, mountPath: /data }
+  volumes:
+    - name: vol
+      persistentVolumeClaim: { claimName: data }

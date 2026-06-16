@@ -1,0 +1,11 @@
+apiVersion: v1
+kind: Service
+metadata:
+  name: web
+  namespace: demo
+spec:
+  selector: { app: web }     # matches the pods' label
+  ports:
+    - port: 80
+      targetPort: 80
+  type: ClusterIP            # internal-only; the Ingress exposes it to the world

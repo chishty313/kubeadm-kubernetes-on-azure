@@ -1,0 +1,8 @@
+# secrets & state
+*.pem
+*.key
+*.kubeconfig
+admin.conf
+.env
+# os noise
+.DS_Store
