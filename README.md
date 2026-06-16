@@ -25,43 +25,39 @@ Anyone can run `az aks create` and get a cluster. This project is the opposite: 
 flowchart TD
     USER([User / Browser])
     ADMIN([Admin / kubectl])
-    DNS[/"DNS A record<br/>k8s.chishty.me"/]
+    DNS["DNS A record<br/>k8s.chishty.me"]
 
-    USER -->|HTTPS :443| DNS
+    USER -->|"HTTPS :443"| DNS
+    DNS -->|"worker public IP"| ING
 
-    subgraph AZ["Azure VNet 10.20.0.0/16 — NSG opens only 22 / 80 / 443"]
-      direction TB
-      subgraph CP["k8s-cp · control-plane · 10.20.1.4"]
-        API[kube-apiserver]
-        ETCD[("etcd")]
-        SCH[scheduler]
-        CM[controller-manager]
+    subgraph CP["control-plane · k8s-cp · 10.20.1.4"]
+        API["kube-apiserver"]
+        ETCD["etcd"]
+        SCH["scheduler"]
+        CM["controller-manager"]
         API --- ETCD
-        SCH --- API
-        CM --- API
-      end
-      subgraph W1["k8s-w1 · worker · 10.20.1.5"]
-        ING["ingress-nginx<br/>hostNetwork :80 / :443"]
-        SVC{{"web Service · ClusterIP"}}
-        P1[web Pod]
-        P2[web Pod]
-        P3[web Pod]
-        CERT[cert-manager]
+        API --- SCH
+        API --- CM
+    end
+
+    subgraph W1["worker · k8s-w1 · 10.20.1.5"]
+        ING["ingress-nginx<br/>hostNetwork :80/:443"]
+        SVC["web Service<br/>ClusterIP"]
+        CERT["cert-manager"]
+        P1["web Pod"]
+        P2["web Pod"]
+        P3["web Pod"]
         ING --> SVC
         SVC --> P1
         SVC --> P2
         SVC --> P3
-      end
+        CERT -.->|"Let's Encrypt → web-tls"| ING
     end
 
-    DNS -->|worker public IP| ING
-    CERT -.->|"Let's Encrypt HTTP-01 → web-tls"| ING
     ADMIN -->|":6443"| API
-    API -.->|"schedules & heals pods"| P1
-
-    classDef ext fill:#e8f2fb,stroke:#0078D4,color:#16263f;
-    class USER,ADMIN,DNS ext;
 ```
+
+> The control plane (`kube-apiserver` + scheduler + controller-manager) continuously schedules and heals the Pods on the worker — that reconciliation loop is the core of Kubernetes.
 
 **Request path:** browser → DNS → worker `:443` (ingress-nginx, `hostNetwork`) → TLS terminate → Ingress rule (host `k8s.chishty.me`) → Service (load-balances by label) → one of the `web` Pods.
 
