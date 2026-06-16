@@ -2,6 +2,68 @@
 
 This document explains the *why* behind the design — useful both as study notes and to talk through in an interview.
 
+## Cluster diagram (renders on GitHub)
+
+```mermaid
+flowchart TD
+    USER([User / Browser])
+    ADMIN([Admin / kubectl])
+    DNS[/"DNS A record<br/>k8s.chishty.me"/]
+
+    USER -->|HTTPS :443| DNS
+
+    subgraph AZ["Azure VNet 10.20.0.0/16 — NSG opens only 22 / 80 / 443"]
+      direction TB
+      subgraph CP["k8s-cp · control-plane · 10.20.1.4"]
+        API[kube-apiserver]
+        ETCD[("etcd")]
+        SCH[scheduler]
+        CM[controller-manager]
+        API --- ETCD
+        SCH --- API
+        CM --- API
+      end
+      subgraph W1["k8s-w1 · worker · 10.20.1.5"]
+        ING["ingress-nginx<br/>hostNetwork :80 / :443"]
+        SVC{{"web Service · ClusterIP"}}
+        P1[web Pod]
+        P2[web Pod]
+        P3[web Pod]
+        CERT[cert-manager]
+        ING --> SVC
+        SVC --> P1
+        SVC --> P2
+        SVC --> P3
+      end
+    end
+
+    DNS -->|worker public IP| ING
+    CERT -.->|"Let's Encrypt HTTP-01 → web-tls"| ING
+    ADMIN -->|":6443"| API
+    API -.->|"schedules & heals pods"| P1
+
+    classDef ext fill:#e8f2fb,stroke:#0078D4,color:#16263f;
+    class USER,ADMIN,DNS ext;
+```
+
+## Request path (sequence)
+
+```mermaid
+sequenceDiagram
+    participant U as User / Browser
+    participant D as DNS
+    participant N as ingress-nginx (worker :443)
+    participant S as web Service (ClusterIP)
+    participant P as web Pod
+    U->>D: resolve k8s.chishty.me
+    D-->>U: worker public IP
+    U->>N: HTTPS request :443
+    Note over N: TLS terminated using web-tls (Let's Encrypt)
+    N->>S: route by host = k8s.chishty.me
+    S->>P: load-balance to a healthy Pod (label app=web)
+    P-->>U: 200 OK (HTTP/2)
+```
+
 ## The big picture
 
 ```

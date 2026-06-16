@@ -21,26 +21,51 @@ Anyone can run `az aks create` and get a cluster. This project is the opposite: 
 
 ## Architecture
 
-```
-                         Internet  (only 22 / 80 / 443 open at the NSG)
-                                       │
-                  DNS: k8s.chishty.me ─┴─►  worker public IP  :80 / :443
-                                       │
-   ┌───────────────────────────────────┴──────────────────────────────────┐
-   │                       Azure VNet  10.20.0.0/16                          │
-   │                                                                        │
-   │   k8s-cp  (control-plane, 10.20.1.4)        k8s-w1 (worker, 10.20.1.5) │
-   │   • kube-apiserver  • etcd                  • ingress-nginx (hostNet)  │
-   │   • scheduler       • controller-manager    • web Deployment ×3 + HPA  │
-   │   • Calico (VXLAN)                          • cert-manager challenges  │
-   └────────────────────────────────────────────────────────────────────────┘
+```mermaid
+flowchart TD
+    USER([User / Browser])
+    ADMIN([Admin / kubectl])
+    DNS[/"DNS A record<br/>k8s.chishty.me"/]
 
-   Request path:  browser → DNS → worker :443 (ingress-nginx) → TLS terminate
-                  → Ingress rule (host k8s.chishty.me) → Service (load-balances)
-                  → one of the web Pods
+    USER -->|HTTPS :443| DNS
+
+    subgraph AZ["Azure VNet 10.20.0.0/16 — NSG opens only 22 / 80 / 443"]
+      direction TB
+      subgraph CP["k8s-cp · control-plane · 10.20.1.4"]
+        API[kube-apiserver]
+        ETCD[("etcd")]
+        SCH[scheduler]
+        CM[controller-manager]
+        API --- ETCD
+        SCH --- API
+        CM --- API
+      end
+      subgraph W1["k8s-w1 · worker · 10.20.1.5"]
+        ING["ingress-nginx<br/>hostNetwork :80 / :443"]
+        SVC{{"web Service · ClusterIP"}}
+        P1[web Pod]
+        P2[web Pod]
+        P3[web Pod]
+        CERT[cert-manager]
+        ING --> SVC
+        SVC --> P1
+        SVC --> P2
+        SVC --> P3
+      end
+    end
+
+    DNS -->|worker public IP| ING
+    CERT -.->|"Let's Encrypt HTTP-01 → web-tls"| ING
+    ADMIN -->|":6443"| API
+    API -.->|"schedules & heals pods"| P1
+
+    classDef ext fill:#e8f2fb,stroke:#0078D4,color:#16263f;
+    class USER,ADMIN,DNS ext;
 ```
 
-Full diagram + explanation: [`docs/03-architecture.md`](docs/03-architecture.md).
+**Request path:** browser → DNS → worker `:443` (ingress-nginx, `hostNetwork`) → TLS terminate → Ingress rule (host `k8s.chishty.me`) → Service (load-balances by label) → one of the `web` Pods.
+
+More detail + a request-path sequence diagram: [`docs/03-architecture.md`](docs/03-architecture.md).
 
 ---
 
